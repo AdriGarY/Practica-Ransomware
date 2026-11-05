@@ -11,13 +11,13 @@ import (
 
 
 func decryptFiles(files []string) error {
-	fmt.Println("=== Iniciando cifrado de archivos ===\n")
+	fmt.Println("=== Iniciando descifrado de archivos ===\n")
 	
-	// Clave de cifrado: "ByClaude" (se expandirá a 32 bytes para AES-256)
+	// Clave de descifrado: "ByClaude" (se expandirá a 32 bytes para AES-256)
 	keyString := "ByClaude"
 	key := expandKey(keyString, 32) // AES-256 requiere 32 bytes
 	
-	fmt.Printf("Clave de cifrado: %s\n", keyString)
+	fmt.Printf("Clave de descifrado: %s\n", keyString)
 	fmt.Printf("Tamaño de clave: %d bytes (AES-256)\n\n", len(key))
 	
 	if len(files) == 0 {
