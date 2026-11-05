@@ -3,11 +3,10 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 
@@ -55,7 +54,7 @@ func decryptFiles(files []string) error {
 
 func decryptFile(filePath string, key []byte) error {
 	// Leer el archivo original
-	plaintext, err := os.ReadFile(filePath)
+	ciphertext, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("error al leer archivo: %v", err)
 	}
@@ -72,20 +71,30 @@ func decryptFile(filePath string, key []byte) error {
 		return fmt.Errorf("error al crear GCM: %v", err)
 	}
 	
-	// Generar nonce aleatorio
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return fmt.Errorf("error al generar nonce: %v", err)
+	// Extraer tamaño de nonce
+	nonce := ciphertext[:gcm.NonceSize()]
+	if len(ciphertext) < gcm.NonceSize() {
+		return fmt.Errorf("archivo demasiado corto para descifrar")
 	}
 	
-	// Cifrar los datos
-	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
-	encriptedfilePath := filePath - ".encrypted"
-	
-	// Escribir el archivo cifrado (sobrescribir el original)
-	err = os.WriteFile(encriptedfilePath, ciphertext, 0644)
+	//Separar el texto cifrado del nonce
+	nonce = ciphertext[:gcm.NonceSize()]
+	ciphertext = ciphertext[gcm.NonceSize():]
+
+	// descifrar los datos
+	plaintext, err := gcm.Open(ciphertext[:0], nonce, ciphertext, nil)
 	if err != nil {
-		return fmt.Errorf("error al escribir archivo cifrado: %v", err)
+		return fmt.Errorf("error al descifrar: %v", err)
+	}
+
+	// Escribir el archivo descifrado (sobrescribir el original)
+	err = os.WriteFile(filePath, plaintext, 0644)
+	if err != nil {
+		return fmt.Errorf("error al escribir archivo descifrado: %v", err)
+	}
+
+	if err := os.Rename(filePath, strings.TrimSuffix(filePath, ".encrypted")); err != nil {
+		return fmt.Errorf("archivo descifrado, pero no se pudo cambiar extension. %v", err)
 	}
 	
 	return nil
