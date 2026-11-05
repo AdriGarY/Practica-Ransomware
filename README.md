@@ -113,6 +113,11 @@ System Volume Information
 $Recycle.Bin
 pagefile.sys
 hiberfil.sys
+Boot
+Windows
+System32
+Program Files
+Program Files (x86)
 ProgramData
 AppData
 Temp
@@ -259,4 +264,3 @@ Para probarlo sin poner en riesgo información real:
 4. No ejecutes el programa en equipos de producción.
 5. Comprueba previamente el código y los permisos.
 6. Conserva una copia externa de cualquier dato importante.
-

