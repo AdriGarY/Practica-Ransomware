@@ -1,0 +1,17 @@
+<Configuration>
+  <VGpu>Disable</VGpu>
+  <Networking>Disable</Networking>
+  <PrinterRedirection>Disable</PrinterRedirection>
+  <ClipboardRedirection>Disable</ClipboardRedirection>
+  <AudioInput>Disable</AudioInput>
+  <VideoInput>Disable</VideoInput>
+  <ProtectedClient>Disable</ProtectedClient>
+  
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\carpeta_aislada_para_test</HostFolder>
+      <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\archivos_test</SandboxFolder>
+      <ReadOnly>false</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+</Configuration>

