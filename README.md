@@ -1,266 +1,205 @@
-# PruebaClaude.go
+# Practica-Ransomware
 
-## Descripción
+Proyecto académico en Go para estudiar, dentro de un laboratorio controlado,
+el comportamiento de un ransomware de prueba y su flujo de recuperación.
 
-`PruebaClaude.go` es un programa de prueba escrito en Go para Windows que
-simula varias fases de un ransomware:
+> [!CAUTION]
+> **Este proyecto es destructivo.** Algunas variantes recorren las unidades
+> de Windows, eliminan Shadow Copies, sobrescriben archivos con contenido
+> cifrado y crean notas de rescate. No lo ejecutes en tu equipo principal, en
+> una red corporativa ni sobre datos reales. El autor no se responsabiliza de
+> pérdida de información, indisponibilidad del sistema o daños derivados de
+> un uso fuera de un entorno autorizado.
 
-1. Elimina todas las copias Shadow del sistema.
-2. Busca archivos de usuario con determinadas extensiones.
-3. Cifra los archivos encontrados.
-4. Sobrescribe los archivos originales con su contenido cifrado.
-5. Muestra por consola un resumen del proceso.
+## Objetivos didácticos
 
-El programa es destructivo: elimina mecanismos de recuperación del sistema y
-modifica directamente los archivos encontrados. Debe utilizarse únicamente en
-un laboratorio, una máquina virtual o un entorno expresamente autorizado.
+- Identificar las fases típicas de un ransomware en un entorno aislado.
+- Practicar recorrido de sistemas de archivos en Windows.
+- Observar el uso de AES-GCM y nonces aleatorios.
+- Separar una variante de cifrado de su correspondiente herramienta de
+  descifrado.
+- Probar una comunicación HTTP local para obtener una clave de laboratorio.
+- Analizar indicadores de compromiso y limitaciones de una implementación
+  experimental.
 
-## Requisitos y compatibilidad
+## Arquitectura
 
-- Sistema operativo Windows.
-- Go instalado.
-- Permisos suficientes para ejecutar `vssadmin`.
-- Permisos de lectura y escritura sobre los archivos que se vayan a procesar.
+El repositorio contiene **varios programas independientes**, cada uno con su
+propia función `main`. Por ello, los archivos `.go` se compilan por separado;
+no se debe ejecutar `go build .` sobre todo el directorio.
 
-El código no es multiplataforma. Utiliza letras de unidad de Windows (`A:` a
-`Z:`), rutas con `\` y el comando `vssadmin`, por lo que no funcionará
-correctamente en Linux o macOS.
+```text
+                          ┌────────────────────┐
+                          │     Server.go      │
+                          │ HTTP :9090 /clave  │
+                          │ devuelve ByClaude  │
+                          └─────────┬──────────┘
+                                    │ HTTP local
+                                    ▼
+┌──────────────────────┐   ┌──────────────────────┐
+│      Virus.go        │   │  Virus_Reverse.go    │
+│ Variante de prueba   │   │ Variante inversa     │
+│ destructiva          │   │ de recuperación      │
+└──────────┬───────────┘   └──────────┬───────────┘
+           │                          │
+           ▼                          ▼
+  Busca y cifra archivos       Busca .encrypted
+  Crea nota de rescate         Descifra y renombra
+  Muestra GIF/audio            archivos originales
 
-## Librerías utilizadas
+                    ┌──────────────────────┐
+                    │      Vacuna.go       │
+                    │ Descifrado local     │
+                    │ sin servidor HTTP    │
+                    └──────────────────────┘
+```
 
-El programa utiliza únicamente librerías estándar de Go:
+### Componentes
 
-- `crypto/aes`: crea el cifrador AES.
-- `crypto/cipher`: construye el modo autenticado GCM.
-- `crypto/rand`: genera el nonce aleatorio.
-- `fmt`: muestra mensajes, contadores y errores.
-- `io`: permite rellenar el nonce con datos aleatorios.
-- `os`: lee, escribe y consulta archivos y unidades.
-- `os/exec`: ejecuta comandos externos de Windows.
-- `path/filepath`: recorre directorios y obtiene extensiones y rutas.
-- `strings`: normaliza extensiones y comprueba directorios excluidos.
-
-No hay dependencias externas ni módulos adicionales.
+| Archivo | Responsabilidad | Dependencias |
+|---|---|---|
+| [`Virus.go`](./Virus.go) | Variante principal: elimina Shadow Copies, busca extensiones de usuario, cifra archivos, crea notas de rescate y muestra una ventana multimedia. | Windows, `vssadmin`, PowerShell y recursos de `media/`. |
+| [`Virus_Reverse.go`](./Virus_Reverse.go) | Variante principal con obtención de clave mediante HTTP local. Realiza las mismas fases destructivas y consulta `Server.go`. | Windows, servidor local en `:9090`. |
+| [`Vacuna.go`](./Vacuna.go) | Busca archivos `.encrypted`, los descifra con la clave fija de laboratorio y elimina la extensión `.encrypted`. | Windows. |
+| [`Server.go`](./Server.go) | Servidor HTTP mínimo que expone `GET /clave` y responde `ByClaude`. | Cualquier sistema con Go; está pensado para uso local. |
+| [`media/`](./media/) | GIF y audio utilizados por `Virus.go` y `Virus_Reverse.go`. | Windows Forms, PowerShell y Windows Media Player. |
+| [`recursos_Prueba/`](./recursos_Prueba/) | Material para preparar un laboratorio: archivos de prueba, una sandbox y archivos comprimidos de ejemplo. | Windows Sandbox para el `.wsb`. |
+| [`Vacuna.exe`](./Vacuna.exe) | Binario precompilado incluido en el repositorio. | No sustituye a una compilación reproducible. |
 
 ## Flujo de ejecución
 
-El flujo comienza en `main`:
+### Variante `Virus.go`
+
+1. Ejecuta `vssadmin` para listar y eliminar las Shadow Copies.
+2. Detecta las unidades de `A:` a `Z:` que estén disponibles.
+3. Recorre las unidades y busca `.jpg`, `.jpeg`, `.gif`, `.docx`, `.xlsx`,
+   `.pptx`, `.pdf` y `.png`.
+4. Omite rutas que contienen nombres de directorios del sistema o de
+   herramientas (`Windows`, `System32`, `Program Files`, `.git`, etc.).
+5. Cifra cada archivo con AES-GCM y antepone el nonce al resultado.
+6. Sobrescribe el archivo y añade la extensión `.encrypted`.
+7. Crea `README.txt` en los directorios donde encontró archivos.
+8. Abre una ventana con el GIF y reproduce el audio de `media/`.
+
+### Variante `Virus_Reverse.go`
+
+Tiene el mismo flujo destructivo, pero obtiene la clave con:
 
 ```text
-main
- ├── deleteShadowCopies()
- │    ├── Lista las copias Shadow
- │    └── Elimina todas las copias Shadow
- ├── searchFiles()
- │    ├── Detecta las unidades disponibles
- │    ├── Recorre sus directorios
- │    └── Devuelve los archivos seleccionados
- ├── printResults()
- │    └── Muestra la lista de archivos encontrados
- └── encryptFiles()
-      └── Cifra y sobrescribe cada archivo encontrado
+GET http://localhost:9090/clave
 ```
 
-Si falla la eliminación de copias Shadow o la búsqueda de unidades, el
-programa muestra el error y termina con código `1`. Si falla el cifrado de uno
-o más archivos, continúa procesando los demás y finalmente también devuelve
-un error.
+Debe utilizarse junto con `Server.go`. Si el servidor no está disponible, la
+variante no dispone de una clave válida para cifrar.
 
-## 1. Eliminación de copias Shadow
+### Variante `Vacuna.go`
 
-La función `deleteShadowCopies` ejecuta dos comandos:
+1. Busca archivos con extensión `.encrypted` en las unidades disponibles.
+2. Extrae el nonce almacenado al principio de cada archivo.
+3. Descifra con AES-GCM usando `ByClaude`.
+4. Sobrescribe el contenido y elimina `.encrypted` del nombre.
 
-```text
-cmd /C vssadmin list shadows
-cmd /C vssadmin delete shadows /all /quiet
+La herramienta de recuperación solo puede funcionar con archivos generados
+por una variante compatible y con la clave correcta. No reemplaza una copia de
+seguridad.
+
+## Criptografía utilizada
+
+- Algoritmo: AES-GCM.
+- Tamaño de clave usado por el código: 32 bytes (AES-256).
+- Clave de laboratorio actual: `ByClaude`.
+- Derivación actual: repetición de los bytes de la cadena hasta alcanzar
+  32 bytes; **no** es una KDF segura.
+- Formato de archivo cifrado: `nonce || ciphertext || tag`.
+- Los archivos se cargan completos en memoria antes de procesarse.
+
+La clave está incrustada o se transmite por HTTP sin autenticación según la
+variante. Esto es intencionado únicamente para la práctica y no debe usarse
+como diseño criptográfico real.
+
+## Requisitos
+
+- Go instalado y disponible en `PATH`.
+- Windows para ejecutar `Virus.go`, `Virus_Reverse.go` o `Vacuna.go`.
+- PowerShell, Windows Forms y Windows Media Player para la ventana multimedia.
+- Permisos suficientes para las operaciones de laboratorio con `vssadmin`.
+- Una máquina virtual o Windows Sandbox aislado, sin datos personales.
+
+`Server.go` usa solo la biblioteca estándar y puede compilarse en otros
+sistemas, aunque su cliente (`Virus_Reverse.go`) está diseñado para Windows.
+
+## Compilación
+
+Desde la raíz del repositorio. Los comandos generan ejecutables Windows
+de 64 bits y siguen el formato de compilación cruzada solicitado:
+
+```bash
+GOOS=windows GOARCH=amd64 go build -o Server.exe Server.go
+GOOS=windows GOARCH=amd64 go build -o Virus.exe Virus.go
+GOOS=windows GOARCH=amd64 go build -o Virus_Reverse.exe Virus_Reverse.go
+GOOS=windows GOARCH=amd64 go build -o Vacuna-Lab.exe Vacuna.go
 ```
 
-Primero lista y muestra las copias existentes. Después solicita a Windows la
-eliminación de **todas** ellas:
+Para comprobar la sintaxis de un único archivo en el sistema actual:
 
-- `/all` selecciona todas las copias Shadow.
-- `/quiet` evita las confirmaciones interactivas.
-
-Esta acción es irreversible desde el programa y puede impedir la recuperación
-de versiones anteriores de los archivos o del sistema.
-
-## 2. Búsqueda de archivos
-
-La función `searchFiles` busca archivos en todas las unidades detectadas. Las
-extensiones configuradas son:
-
-| Extensión | Tipo habitual |
-|---|---|
-| `.jpg` | Imagen JPEG |
-| `.docx` | Documento de Word |
-| `.xlsx` | Hoja de cálculo de Excel |
-| `.pptx` | Presentación de PowerPoint |
-| `.pdf` | Documento PDF |
-| `.png` | Imagen PNG |
-
-El recorrido se realiza con `filepath.Walk`. Para cada ruta:
-
-1. Ignora los errores de acceso y continúa con el siguiente elemento.
-2. Omite ciertos directorios del sistema.
-3. Comprueba la extensión en minúsculas.
-4. Convierte la ruta a absoluta.
-5. Añade el archivo a la lista `foundFiles`.
-
-Los directorios que se intentan excluir son:
-
-```text
-System Volume Information
-$Recycle.Bin
-pagefile.sys
-hiberfil.sys
-Boot
-Windows
-System32
-Program Files
-Program Files (x86)
-ProgramData
-AppData
-Temp
-.git
-node_modules
+```bash
+go build Server.go
 ```
 
-La exclusión se basa en comprobar si el nombre aparece dentro de la ruta
-completa, sin distinguir entre mayúsculas y minúsculas.
+No compiles todos los archivos juntos: contienen varias funciones `main` y
+declaraciones duplicadas entre variantes.
 
-## 3. Cifrado de archivos
+## Ejecución segura en laboratorio
 
-La función `encryptFiles` recibe las rutas encontradas y utiliza la clave de
-texto fija:
+1. Crea una máquina virtual o Windows Sandbox **desechable**.
+2. Desactiva carpetas compartidas, portapapeles compartido y unidades
+   montadas del equipo anfitrión.
+3. Desconecta la red o permite únicamente `localhost`.
+4. Crea archivos de prueba sin valor dentro del entorno aislado.
+5. Copia `media/` junto al ejecutable si vas a probar la ventana multimedia.
+6. Compila y ejecuta una sola variante cada vez.
+7. Conserva una instantánea de la máquina virtual antes de la prueba.
+8. Restaura o destruye la máquina virtual al terminar.
 
-```text
-ByClaude
-```
+### Prueba del flujo con servidor local
 
-Después llama a `expandKey` para convertirla en una clave de 32 bytes, el
-tamaño utilizado por AES-256. La función completa cada posición restante
-repitiendo los bytes de la clave original.
-
-Para cada archivo:
-
-1. Muestra el progreso en la consola.
-2. Lee el archivo completo en memoria mediante `os.ReadFile`.
-3. Crea un cifrador AES.
-4. Construye AES-GCM.
-5. Genera un nonce aleatorio.
-6. Cifra el contenido con `gcm.Seal`.
-7. Guarda el nonce seguido del texto cifrado.
-8. Sobrescribe el archivo original mediante `os.WriteFile`.
-
-El nonce se antepone al resultado cifrado porque será necesario para intentar
-descifrar el contenido posteriormente. El modo GCM también incluye
-autenticación de integridad, de modo que detecta modificaciones del texto
-cifrado.
-
-## 4. Resultados y errores
-
-`encryptFiles` mantiene dos contadores:
-
-- `successCount`: archivos cifrados correctamente.
-- `failCount`: archivos que no se pudieron cifrar.
-
-Si no hay archivos, muestra un mensaje y termina sin realizar operaciones de
-cifrado. Si uno falla, el programa informa del error y continúa con el
-siguiente. Al acabar, si `failCount` es mayor que cero, devuelve un error.
-
-## Funciones auxiliares
-
-### `getDrives`
-
-Comprueba las letras de unidad de `A` a `Z` y conserva las que tienen una raíz
-accesible, como `C:\` o `D:\`.
-
-### `isSystemDirectory`
-
-Devuelve `true` cuando la ruta contiene alguno de los nombres configurados
-como directorios del sistema o directorios que pueden ralentizar el recorrido.
-Cuando devuelve `true`, `filepath.Walk` utiliza `filepath.SkipDir`.
-
-### `expandKey`
-
-Crea un slice del tamaño solicitado, copia la clave recibida y repite sus
-bytes hasta rellenar el tamaño final. En este programa se usa para producir
-una clave AES de 32 bytes.
-
-### `printResults`
-
-Imprime el número total de archivos localizados y enumera sus rutas. No crea
-ningún archivo de resultados.
-
-## Compilación y ejecución
-
-Desde PowerShell:
+En una terminal de laboratorio, inicia primero el servidor:
 
 ```powershell
-go build -o PruebaClaude.exe .\PruebaClaude.go
-.\PruebaClaude.exe
+.\Server.exe
 ```
 
-O directamente:
+En otra terminal del mismo entorno, ejecuta la variante que consulta la clave:
 
 ```powershell
-go run .\PruebaClaude.go
+.\Virus_Reverse.exe
 ```
 
-Es posible que sea necesario ejecutar la terminal como administrador para que
-`vssadmin` pueda listar y eliminar las copias Shadow.
+Para intentar la recuperación en el mismo entorno:
 
-## Ejemplo de salida
-
-```text
-=== Iniciando eliminación de copias shadow ===
-Copias shadow encontradas:
-...
-✓ Copias shadow eliminadas exitosamente
-
-=== Iniciando búsqueda de archivos ===
-Buscando en unidades: [C:]
-
-Escaneando unidad: C:\
-  Encontrado: C:\Users\Usuario\Documents\informe.pdf
-
-✓ Búsqueda completada. Total de archivos encontrados: 1
-
-=== RESULTADOS DE LA BÚSQUEDA ===
-Total de archivos encontrados: 1
-
-1. C:\Users\Usuario\Documents\informe.pdf
-=== Iniciando cifrado de archivos ===
-
-Clave de cifrado: ByClaude
-Tamaño de clave: 32 bytes (AES-256)
-
-[1/1] Cifrando: C:\Users\Usuario\Documents\informe.pdf
-  ✓ Archivo cifrado exitosamente
+```powershell
+.\Vacuna-Lab.exe
 ```
 
-## Limitaciones importantes
+Estas instrucciones **no** convierten el programa en una herramienta de
+recuperación segura: el código sobrescribe archivos y no crea copias de
+seguridad.
 
-- La clave está escrita directamente en el código y se imprime por consola.
-- No existe una función de descifrado.
-- Si se pierde la clave, no hay un mecanismo alternativo de recuperación.
-- La clave se amplía mediante repetición, no mediante una función de derivación
-  de claves criptográficamente adecuada.
-- Cada archivo se carga completamente en memoria.
-- Los archivos originales se sobrescriben; no se crean copias de seguridad.
-- El programa no comprueba que el contenido cifrado pueda recuperarse.
-- Los errores de acceso durante el recorrido se ignoran.
-- No se guarda un registro persistente de los archivos procesados.
-- El escaneo puede tardar mucho al recorrer unidades completas.
-- La eliminación de Shadow Copies se realiza antes del cifrado.
+## Indicadores observables
 
-## Uso seguro en laboratorio
+En un entorno de análisis, pueden observarse:
 
-Para probarlo sin poner en riesgo información real:
+- Ejecución de `cmd.exe` y `vssadmin.exe`.
+- Recorrido de letras de unidad y lectura masiva del sistema de archivos.
+- Escrituras sobre documentos e imágenes.
+- Renombrado de archivos a `.encrypted`.
+- Creación de `README.txt` en directorios afectados.
+- Peticiones HTTP locales a `/clave`.
+- Ejecución de PowerShell y acceso a los recursos multimedia.
 
-1. Utiliza una máquina virtual aislada.
-2. Crea únicamente archivos de prueba.
-3. Desconecta el entorno de redes no necesarias.
-4. No ejecutes el programa en equipos de producción.
-5. Comprueba previamente el código y los permisos.
-6. Conserva una copia externa de cualquier dato importante.
+
+## Licencia y uso
+
+No se declara una licencia en este repositorio. Hasta que se añada una,
+considéralo código de uso restringido para fines educativos y de laboratorio.
+No lo redistribuyas ni lo ejecutes contra sistemas sin autorización expresa.
