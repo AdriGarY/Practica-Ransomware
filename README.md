@@ -59,7 +59,7 @@ no se debe ejecutar `go build .` sobre todo el directorio.
 | Archivo | Responsabilidad | Dependencias |
 |---|---|---|
 | [`Virus.go`](./Virus.go) | Variante principal: elimina Shadow Copies, busca extensiones de usuario, cifra archivos, crea notas de rescate y muestra una ventana multimedia. | Windows, `vssadmin`, PowerShell y recursos de `media/`. |
-| [`Virus_Reverse.go`](./Virus_Reverse.go) | Variante principal con obtención de clave mediante HTTP local. Realiza las mismas fases destructivas y consulta `Server.go`. | Windows, servidor local en `:9090`. |
+| [`Virus_Reverse.go`](./Virus_Reverse.go) | Variante principal con obtención de clave mediante HTTP local. Realiza las mismas fases destructivas y consulta `Server.go`; incorpora el GIF y el audio dentro del ejecutable. | Windows, servidor local en `:9090`. |
 | [`Vacuna.go`](./Vacuna.go) | Busca archivos `.encrypted`, los descifra con la clave fija de laboratorio y elimina la extensión `.encrypted`. | Windows. |
 | [`Server.go`](./Server.go) | Servidor HTTP mínimo que expone `GET /clave` y responde `ByClaude`. | Cualquier sistema con Go; está pensado para uso local. |
 | [`media/`](./media/) | GIF y audio utilizados por `Virus.go` y `Virus_Reverse.go`. | Windows Forms, PowerShell y Windows Media Player. |
@@ -156,7 +156,7 @@ declaraciones duplicadas entre variantes.
    montadas del equipo anfitrión.
 3. Desconecta la red o permite únicamente `localhost`.
 4. Crea archivos de prueba sin valor dentro del entorno aislado.
-5. Copia `media/` junto al ejecutable si vas a probar la ventana multimedia.
+5. Para `Virus.go`, copia `media/` junto al ejecutable si vas a probar la ventana multimedia. `Virus_Reverse.go` incorpora esos recursos dentro del ejecutable mediante `embed`.
 6. Compila y ejecuta una sola variante cada vez.
 7. Conserva una instantánea de la máquina virtual antes de la prueba.
 8. Restaura o destruye la máquina virtual al terminar.
